@@ -1,0 +1,21 @@
+{
+  "name": "allnighter-discord-bot",
+  "version": "2.0.0",
+  "description": "All Nighter — Ultimate Discord Bot with Gambling, Economy, Actions, Moderation & More 🌙",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=16.9.0"
+  },
+  "author": "All Nighter Bot",
+  "license": "MIT"
+}
