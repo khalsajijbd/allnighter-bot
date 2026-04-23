@@ -15,7 +15,7 @@ const client = new Client({
   ]
 });
 
-const { token, clientId, guildId } = require('./config.json');
+const { token, clientId } = require('./config.json');
 
 // ─── In-Memory Data Stores ────────────────────────────────────────────────────
 const economy       = new Map(); // userId -> { balance, bank, lastDaily, totalWon, totalLost }
@@ -256,10 +256,12 @@ const commands = [
 const rest = new REST({ version: '10' }).setToken(token);
 (async () => {
   try {
-    console.log('🌙 All Nighter: Registering commands...');
-    await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: commands });
-    console.log('✅ Commands registered!');
-  } catch (err) { console.error(err); }
+    console.log('🌙 All Nighter: Registering GLOBAL slash commands...');
+    await rest.put(Routes.applicationCommands(clientId), { body: commands });
+    console.log('✅ Global commands registered! (may take up to 1 hour to appear in all servers)');
+  } catch (err) {
+    console.error('❌ Command registration failed:', err);
+  }
 })();
 
 // ─── Static Data ─────────────────────────────────────────────────────────────

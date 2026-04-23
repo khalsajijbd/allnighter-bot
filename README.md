@@ -128,4 +128,3 @@ https://discord.com/api/oauth2/authorize?client_id=1496797832827371530&permissio
 - GIFs are fetched from **Tenor API** — they're real animated GIFs, not text.
 - Starting balance for all new users: **500 coins**.
 - `/studystop` rewards **5 coins + 10 XP per minute** studied.
-# allnighter-bot
