@@ -46,19 +46,56 @@ function addMoney(userId, amount) {
 function formatMoney(n) { return `💰 **${n.toLocaleString()}** coins`; }
 
 // ─── GIF APIs ────────────────────────────────────────────────────────────────
+// nekos.best action map — free, no API key, purpose-built for anime action GIFs
+const nekoActionMap = {
+  'anime hug': 'hug',
+  'anime kiss': 'kiss',
+  'anime slap': 'slap',
+  'anime poke': 'poke',
+  'anime headpat': 'pat',
+  'anime crying': 'cry',
+  'anime dance': 'dance',
+  'anime facepalm': 'facepalm',
+  'anime high five': 'highfive',
+  'anime bite': 'bite',
+  'anime punch': 'punch',
+  'anime wave': 'wave',
+  'anime cuddle': 'cuddle',
+  'uwu owo anime cat': 'nod',
+  'anime battle fight': 'kick',
+  'anime fight battle': 'kick',
+  'anime roast fire burn': 'baka',
+  'anime determined motivation': 'thumbsup',
+  'anime boop nose': 'poke',
+};
+
+async function fetchActionGif(query) {
+  try {
+    const endpoint = nekoActionMap[query] || 'wave';
+    const res = await fetch(`https://nekos.best/api/v2/${endpoint}?amount=1`);
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    return data.results?.[0]?.url || null;
+  } catch {
+    return null;
+  }
+}
+
 async function fetchGif(query) {
+  // For known action queries, use nekos.best
+  if (nekoActionMap[query]) return fetchActionGif(query);
+  // For general GIF searches, use Tenor anonymous key
   try {
     const res = await fetch(
-      `https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(query)}&key=AIzaSyAyimkuYQYF_FXVALexPjykdFPMSGSp7CI&limit=20&media_filter=gif`
+      `https://g.tenor.com/v1/search?q=${encodeURIComponent(query)}&key=LIVDSRZULELA&limit=20&contentfilter=off&media_filter=minimal`
     );
     if (!res.ok) throw new Error();
     const data = await res.json();
     const results = data.results;
     if (!results || results.length === 0) throw new Error();
     const r = results[Math.floor(Math.random() * results.length)];
-    return r.media_formats?.gif?.url || r.url;
+    return r.media?.[0]?.gif?.url || null;
   } catch {
-    // Fallback: return a generic fun GIF via giphy public beta
     return null;
   }
 }
@@ -440,9 +477,23 @@ function handTotal(hand) {
 // ─── Action GIF Helper ────────────────────────────────────────────────────────
 async function actionEmbed(interaction, query, title, color) {
   await interaction.deferReply();
-  const gifUrl = await fetchGif(query);
+  let gifUrl = null;
+  // If it's a nekos.best action key, fetch directly
+  if (nekoActionMap[query]) {
+    try {
+      const endpoint = nekoActionMap[query];
+      const res = await fetch(`https://nekos.best/api/v2/${endpoint}?amount=1`);
+      if (res.ok) {
+        const data = await res.json();
+        gifUrl = data.results?.[0]?.url || null;
+      }
+    } catch {}
+  } else {
+    gifUrl = await fetchGif(query);
+  }
   const embed = new EmbedBuilder().setColor(color).setTitle(title).setFooter({ text: 'All Nighter Bot 🌙' });
   if (gifUrl) embed.setImage(gifUrl);
+  else embed.setDescription('*(GIF unavailable)*');
   await interaction.editReply({ embeds: [embed] });
 }
 
@@ -839,23 +890,126 @@ client.on('interactionCreate', async interaction => {
     const bet = interaction.options.getInteger('bet');
     const e = getEconomy(user.id);
     if (e.balance < bet) return interaction.reply({ content: `❌ You only have **${e.balance}** coins!`, ephemeral: true });
-    if (e.balance < bet) return;
+
+    // Deduct bet upfront
     e.balance -= bet;
-    const crashAt = parseFloat((Math.random() * 9 + 1.01).toFixed(2));
-    const cashoutAt = parseFloat((Math.random() * (crashAt - 1) + 1).toFixed(2));
-    const won = cashoutAt < crashAt;
-    const payout = won ? Math.floor(bet * cashoutAt) : 0;
-    if (won) { e.balance += payout; e.totalWon += payout - bet; }
-    else { e.totalLost += bet; }
-    let desc = `📈 Multiplier climbed...\n`;
-    for (let m = 1.0; m < Math.min(crashAt + 0.2, 4); m = parseFloat((m + 0.25).toFixed(2))) {
-      desc += m <= cashoutAt ? `✅ **${m}x**  ` : m >= crashAt ? `💥 **CRASH @ ${crashAt}x!**` : `📈 ${m}x  `;
+
+    // Predetermined crash point (1.01x – 10x)
+    const crashAt = parseFloat((Math.random() * 8.99 + 1.01).toFixed(2));
+
+    let multiplier = 1.00;
+    let cashedOut = false;
+    let cashoutMultiplier = null;
+
+    // Build initial embed with Cash Out button
+    function buildEmbed(multi, crashed = false, cashedOutAt = null) {
+      const profit = cashedOutAt ? Math.floor(bet * cashedOutAt) - bet : null;
+      const total  = cashedOutAt ? Math.floor(bet * cashedOutAt) : null;
+
+      const embed = new EmbedBuilder()
+        .setColor(crashed ? '#ED4245' : cashedOutAt ? '#57F287' : '#FEE75C')
+        .setFooter({ text: 'All Nighter Crash 📈' });
+
+      if (cashedOutAt) {
+        embed.setTitle('💸 Cashed Out!')
+          .addFields(
+            { name: 'Crashed at', value: `**${crashed ? cashedOutAt : crashAt}x**`, inline: true },
+            { name: 'Multiplier', value: `**${cashedOutAt}x**`, inline: true },
+            { name: 'Profit', value: `+◎ ${profit.toLocaleString()}`, inline: true },
+            { name: 'Total Returned', value: `◎ ${total.toLocaleString()}`, inline: false }
+          )
+          .setDescription('✅ You got out in time!');
+      } else if (crashed) {
+        embed.setTitle('💥 Crashed!')
+          .setDescription(`The rocket crashed at **${crashAt}x** — you lost **◎ ${bet.toLocaleString()}**!`)
+          .addFields({ name: 'Multiplier', value: `**${crashAt}x**`, inline: true });
+      } else {
+        embed.setTitle('📈 Crash — In Progress')
+          .setDescription(`🚀 Multiplier rising... Click **Cash Out** before it crashes!`)
+          .addFields(
+            { name: 'Current Multiplier', value: `**${multi.toFixed(2)}x**`, inline: true },
+            { name: 'Your Bet', value: `◎ ${bet.toLocaleString()}`, inline: true },
+            { name: 'Current Value', value: `◎ ${Math.floor(bet * multi).toLocaleString()}`, inline: true }
+          );
+      }
+      return embed;
     }
-    await interaction.reply({ embeds: [new EmbedBuilder()
-      .setColor(won ? '#57F287' : '#ED4245')
-      .setTitle(`📈 Crash — ${won ? `Cashed out @ ${cashoutAt}x` : `CRASHED @ ${crashAt}x`}`)
-      .setDescription(desc + `\n\n${won ? `🎉 **Profit: +${(payout - bet).toLocaleString()} coins**` : `💥 **Lost ${bet.toLocaleString()} coins**`}\nBalance: **${e.balance.toLocaleString()}** coins`)
-      .setFooter({ text: 'All Nighter Crash 📈' })] });
+
+    const cashOutBtn = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`crash_cashout_${user.id}`).setLabel('💸 CASH OUT').setStyle(ButtonStyle.Success)
+    );
+
+    await interaction.reply({
+      embeds: [buildEmbed(multiplier)],
+      components: [cashOutBtn]
+    });
+
+    const msg = await interaction.fetchReply();
+
+    // Create a button collector — only the player who ran the command can cash out
+    const collector = msg.createMessageComponentCollector({
+      filter: i => i.customId === `crash_cashout_${user.id}` && i.user.id === user.id,
+      time: 30000,
+      max: 1
+    });
+
+    collector.on('collect', async i => {
+      cashedOut = true;
+      cashoutMultiplier = multiplier;
+      clearInterval(ticker);
+      const payout = Math.floor(bet * cashoutMultiplier);
+      const profit = payout - bet;
+      e.balance += payout;
+      e.totalWon += profit;
+      await i.update({
+        embeds: [buildEmbed(multiplier, false, cashoutMultiplier)],
+        components: [new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('crash_done').setLabel('💸 CASH OUT').setStyle(ButtonStyle.Success).setDisabled(true)
+        )]
+      });
+    });
+
+    // Tick the multiplier every 1.5s
+    const ticker = setInterval(async () => {
+      if (cashedOut) { clearInterval(ticker); return; }
+      multiplier = parseFloat((multiplier + (Math.random() * 0.3 + 0.1)).toFixed(2));
+
+      if (multiplier >= crashAt) {
+        clearInterval(ticker);
+        collector.stop('crashed');
+        e.totalLost += bet;
+        try {
+          await interaction.editReply({
+            embeds: [buildEmbed(multiplier, true)],
+            components: [new ActionRowBuilder().addComponents(
+              new ButtonBuilder().setCustomId('crash_done').setLabel('💥 CRASHED').setStyle(ButtonStyle.Danger).setDisabled(true)
+            )]
+          });
+        } catch {}
+        return;
+      }
+
+      // Update the live embed
+      try {
+        await interaction.editReply({ embeds: [buildEmbed(multiplier)], components: [cashOutBtn] });
+      } catch {}
+    }, 1500);
+
+    // If time runs out and player never cashed out, crash it
+    collector.on('end', async (collected, reason) => {
+      if (reason === 'time' && !cashedOut) {
+        clearInterval(ticker);
+        e.totalLost += bet;
+        try {
+          await interaction.editReply({
+            embeds: [buildEmbed(multiplier, true)],
+            components: [new ActionRowBuilder().addComponents(
+              new ButtonBuilder().setCustomId('crash_done').setLabel('💥 CRASHED').setStyle(ButtonStyle.Danger).setDisabled(true)
+            )]
+          });
+        } catch {}
+      }
+    });
   }
 
   else if (commandName === 'lottery') {
